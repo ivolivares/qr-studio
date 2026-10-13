@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ContentInput } from './components/Controls/ContentInput';
 import { ColorControls } from './components/Controls/ColorControls';
 import { LogoUpload } from './components/Controls/LogoUpload';
 import { StyleShapes } from './components/Controls/StyleShapes';
+import { AdvancedSettings } from './components/Controls/AdvancedSettings';
 import { QRPreview } from './components/QRPreview';
-import { QRConfig } from './types/qr';
-import { RotateCcw, Sparkles, CheckCircle2, ShieldCheck, HelpCircle } from 'lucide-react';
+import { QRHistory } from './components/QRHistory';
+import { QRConfig, QRHistoryItem } from './types/qr';
+import { 
+  getQRHistory, 
+  saveQRToHistory, 
+  deleteQRFromHistory, 
+  clearQRHistory,
+  encodeQRContent 
+} from './utils/qrHelper';
+import { RotateCcw, Sparkles, HelpCircle } from 'lucide-react';
 
 const INITIAL_CONFIG: QRConfig = {
   contentCategory: 'url',
@@ -46,10 +55,10 @@ const INITIAL_CONFIG: QRConfig = {
   cornerSquareColor: '#0f172a',
   cornerDotColor: '#2563eb',
 
-  // Geometry
-  dotShape: 'rounded',
-  cornerSquareShape: 'extra-rounded',
-  cornerDotShape: 'dot',
+  // Geometry (Siempre cuadrado por defecto first)
+  dotShape: 'square',
+  cornerSquareShape: 'square',
+  cornerDotShape: 'square',
 
   // Sizing & Margin
   margin: 12,
@@ -60,10 +69,19 @@ const INITIAL_CONFIG: QRConfig = {
   logoSize: 0.24, // 24% of QR code width (safe area)
   logoMargin: 4,
   hideBackgroundDots: true,
+
+  // Advanced Error Correction
+  errorCorrectionLevel: 'H',
 };
 
 export default function App() {
   const [config, setConfig] = useState<QRConfig>(INITIAL_CONFIG);
+  const [history, setHistory] = useState<QRHistoryItem[]>([]);
+
+  // Load history from LocalStorage on mount
+  useEffect(() => {
+    setHistory(getQRHistory());
+  }, []);
 
   const handleConfigChange = (updates: Partial<QRConfig>) => {
     setConfig((prev) => ({ ...prev, ...updates }));
@@ -71,6 +89,38 @@ export default function App() {
 
   const handleReset = () => {
     setConfig(INITIAL_CONFIG);
+  };
+
+  // Save generated QR snapshot into LocalStorage
+  const handleSaveToHistory = (thumbnailDataUrl: string) => {
+    const payload = encodeQRContent(config);
+    const title = config.contentCategory === 'url' ? config.rawText : `${config.contentCategory.toUpperCase()}: ${payload.slice(0, 30)}`;
+    const updated = saveQRToHistory({
+      title,
+      payload,
+      category: config.contentCategory,
+      thumbnailDataUrl,
+      config,
+    });
+    setHistory(updated);
+  };
+
+  // Restore QR config from history
+  const handleSelectHistory = (selectedConfig: QRConfig) => {
+    setConfig(selectedConfig);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDeleteHistory = (id: string) => {
+    const updated = deleteQRFromHistory(id);
+    setHistory(updated);
+  };
+
+  const handleClearHistory = () => {
+    if (confirm('¿Estás seguro de que deseas eliminar todo el historial de códigos QR?')) {
+      clearQRHistory();
+      setHistory([]);
+    }
   };
 
   // Quick Preset Styles
@@ -86,6 +136,7 @@ export default function App() {
           cornerSquareShape: 'square',
           cornerDotShape: 'square',
           margin: 15,
+          errorCorrectionLevel: 'H',
         });
         break;
       case 'modern-blue':
@@ -101,6 +152,7 @@ export default function App() {
           cornerSquareShape: 'extra-rounded',
           cornerDotShape: 'dot',
           margin: 12,
+          errorCorrectionLevel: 'H',
         });
         break;
       case 'transparent-clean':
@@ -112,6 +164,7 @@ export default function App() {
           cornerSquareShape: 'extra-rounded',
           cornerDotShape: 'dot',
           margin: 12,
+          errorCorrectionLevel: 'H',
         });
         break;
       case 'emerald-luxury':
@@ -126,6 +179,7 @@ export default function App() {
           cornerSquareShape: 'extra-rounded',
           cornerDotShape: 'dot',
           margin: 14,
+          errorCorrectionLevel: 'H',
         });
         break;
     }
@@ -135,9 +189,9 @@ export default function App() {
     <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-sans">
       <Header />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
         {/* Style Presets Bar */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-white p-3 sm:px-4 rounded-xl border border-slate-200/90 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 sm:px-4 rounded-xl border border-slate-200/90 shadow-2xs">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
             <Sparkles className="w-3.5 h-3.5 text-blue-600" />
             <span>Estilos Rápidos:</span>
@@ -147,28 +201,28 @@ export default function App() {
             <button
               type="button"
               onClick={() => applyPreset('classic')}
-              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors"
+              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors cursor-pointer"
             >
               Impresión Clásica
             </button>
             <button
               type="button"
               onClick={() => applyPreset('modern-blue')}
-              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors"
+              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors cursor-pointer"
             >
               Degradado Corporativo
             </button>
             <button
               type="button"
               onClick={() => applyPreset('transparent-clean')}
-              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors"
+              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors cursor-pointer"
             >
               Fondo Transparente
             </button>
             <button
               type="button"
               onClick={() => applyPreset('emerald-luxury')}
-              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors"
+              className="px-2.5 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 font-medium text-slate-700 transition-colors cursor-pointer"
             >
               Esmeralda Elegante
             </button>
@@ -177,7 +231,7 @@ export default function App() {
           <button
             type="button"
             onClick={handleReset}
-            className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium transition-colors ml-auto sm:ml-0"
+            className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 font-medium transition-colors ml-auto sm:ml-0 cursor-pointer"
             title="Restablecer valores por defecto"
           >
             <RotateCcw className="w-3 h-3" />
@@ -189,7 +243,7 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Left Column: Form Controls (7 cols on lg) */}
           <div className="lg:col-span-7 space-y-6">
-            {/* 1. Base URL / Content */}
+            {/* 1. Base URL / Content (with visual validation) */}
             <ContentInput config={config} onChange={handleConfigChange} />
 
             {/* 2. Colors & Transparency */}
@@ -200,16 +254,27 @@ export default function App() {
 
             {/* 4. Shapes & Geometry */}
             <StyleShapes config={config} onChange={handleConfigChange} />
+
+            {/* 5. Advanced Settings (ECC L, M, Q, H & Fine Tuning) */}
+            <AdvancedSettings config={config} onChange={handleConfigChange} />
           </div>
 
           {/* Right Column: Sticky Preview & 4096px CTA (5 cols on lg) */}
           <div className="lg:col-span-5 lg:sticky lg:top-20 space-y-5">
-            <QRPreview config={config} />
+            <QRPreview config={config} onSaveToHistory={handleSaveToHistory} />
           </div>
         </div>
 
-        {/* Technical FAQ & Printing Guide Accordion/Notes */}
-        <div className="mt-12 bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
+        {/* Local Storage History Component */}
+        <QRHistory
+          history={history}
+          onSelect={handleSelectHistory}
+          onDelete={handleDeleteHistory}
+          onClear={handleClearHistory}
+        />
+
+        {/* Technical FAQ & Printing Guide */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
           <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
             <HelpCircle className="w-4 h-4 text-blue-600" />
             Preguntas Frecuentes y Estándares de Impresión
@@ -233,7 +298,7 @@ export default function App() {
             <div className="space-y-1.5">
               <h4 className="font-semibold text-slate-800">Margen de Seguridad del Logo</h4>
               <p className="leading-relaxed">
-                La aplicación utiliza de forma obligatoria el Nivel de Corrección 'H' (30%). El área segura de logo recomendada es del 20% al 25% para asegurar que cualquier lector de smartphone o terminal industrial lo lea al instante.
+                La aplicación permite seleccionar entre los niveles L (7%), M (15%), Q (25%) y H (30%). Si utilizas un logotipo central, recomendamos mantener el Nivel H para evitar errores de lectura.
               </p>
             </div>
           </div>

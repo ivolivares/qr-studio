@@ -1,5 +1,5 @@
 import { Options } from 'qr-code-styling';
-import { QRConfig } from '../types/qr';
+import { QRConfig, QRHistoryItem } from '../types/qr';
 
 /**
  * Builds the string payload based on the selected content category.
@@ -79,7 +79,7 @@ export function buildQRCodeStylingOptions(config: QRConfig, size: number, type: 
     qrOptions: {
       typeNumber: 0, // automatic sizing based on payload length
       mode: 'Byte',
-      errorCorrectionLevel: 'H' // 30% error correction, essential for logos & print
+      errorCorrectionLevel: config.errorCorrectionLevel || 'H' // Configurable: L (7%), M (15%), Q (25%), H (30%)
     },
     image: config.logoUrl || undefined,
     imageOptions: {
@@ -166,3 +166,129 @@ export const POPULAR_BACKGROUNDS = [
   { name: 'Crema / Marfil', value: '#fffbeb' },
   { name: 'Hielo Suave', value: '#f0fdf4' }
 ];
+
+/**
+ * URL validation result with actionable feedback and auto-prefix suggestion.
+ */
+export interface UrlValidationResult {
+  isValid: boolean;
+  status: 'valid' | 'missing-protocol' | 'invalid-format' | 'empty';
+  message: string;
+  suggestedUrl: string | null;
+}
+
+export function validateUrl(rawUrl: string): UrlValidationResult {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return {
+      isValid: false,
+      status: 'empty',
+      message: 'Ingresa una dirección web o URL antes de generar el código.',
+      suggestedUrl: null
+    };
+  }
+
+  // Check if it has protocol
+  const hasProtocol = /^(https?|ftp):\/\//i.test(trimmed);
+  const testUrl = hasProtocol ? trimmed : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(testUrl);
+    const hostname = parsed.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const hasValidDomain = isLocalhost || (hostname.includes('.') && !hostname.startsWith('.') && !hostname.endsWith('.'));
+
+    if (!hasValidDomain) {
+      return {
+        isValid: false,
+        status: 'invalid-format',
+        message: 'El dominio ingresado no parece válido. Debe incluir extensión (ej. empresa.com).',
+        suggestedUrl: null
+      };
+    }
+
+    if (!hasProtocol) {
+      return {
+        isValid: false,
+        status: 'missing-protocol',
+        message: 'Falta el protocolo seguro "https://". Sin él, algunos escáneres no abrirán el enlace directo.',
+        suggestedUrl: `https://${trimmed}`
+      };
+    }
+
+    return {
+      isValid: true,
+      status: 'valid',
+      message: 'URL válida y verificada.',
+      suggestedUrl: null
+    };
+  } catch {
+    return {
+      isValid: false,
+      status: 'invalid-format',
+      message: 'El formato de la dirección web no es válido.',
+      suggestedUrl: null
+    };
+  }
+}
+
+const HISTORY_STORAGE_KEY = 'qr_studio_history_v1';
+const MAX_HISTORY_ITEMS = 25;
+
+export function getQRHistory(): QRHistoryItem[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as QRHistoryItem[];
+  } catch (err) {
+    console.error('Error al leer historial de LocalStorage:', err);
+    return [];
+  }
+}
+
+export function saveQRToHistory(item: Omit<QRHistoryItem, 'id' | 'timestamp' | 'dateFormatted'>): QRHistoryItem[] {
+  try {
+    const existing = getQRHistory();
+    const now = new Date();
+    const newItem: QRHistoryItem = {
+      ...item,
+      id: `qr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: Date.now(),
+      dateFormatted: now.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    };
+
+    const updated = [newItem, ...existing.filter((i) => i.payload !== item.payload)].slice(0, MAX_HISTORY_ITEMS);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (err) {
+    console.error('Error al guardar en LocalStorage:', err);
+    return [];
+  }
+}
+
+export function deleteQRFromHistory(id: string): QRHistoryItem[] {
+  try {
+    const existing = getQRHistory();
+    const updated = existing.filter((item) => item.id !== id);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (err) {
+    console.error('Error al eliminar de LocalStorage:', err);
+    return [];
+  }
+}
+
+export function clearQRHistory(): void {
+  try {
+    localStorage.removeItem(HISTORY_STORAGE_KEY);
+  } catch (err) {
+    console.error('Error al limpiar LocalStorage:', err);
+  }
+}
+

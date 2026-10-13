@@ -61,7 +61,21 @@ export interface QRConfig {
   // Logo
   logoUrl: string | null;
   logoFileName: string | null;
-  logoSize: number; // 0.15 to 0.32 (percentage of QR width, default 0.24)
+  logoSize: number; // 0.10 to 0.35 (percentage of QR width, default 0.24)
   logoMargin: number; // padding around logo
   hideBackgroundDots: boolean;
+
+  // Advanced QR Settings
+  errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
+}
+
+export interface QRHistoryItem {
+  id: string;
+  timestamp: number;
+  dateFormatted: string;
+  title: string;
+  payload: string;
+  category: ContentCategory;
+  thumbnailDataUrl: string;
+  config: QRConfig;
 }
